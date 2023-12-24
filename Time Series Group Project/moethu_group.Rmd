@@ -1,0 +1,203 @@
+---
+title: "Moe Thu Group Project Contribution"
+output:
+  html_document: default
+  pdf_document: default
+---
+```{r setup, include = FALSE}
+
+# Set up the default parameters
+# 1. The code block will be shown in the document
+# 2. set up figure display size
+# 3. turn off all the warnings and messages
+
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(fig.width = 8, fig.height = 4)
+knitr::opts_chunk$set(warning = FALSE, message = FALSE)
+
+```
+
+```{r library}
+library(lubridate)
+library(mgcv)
+library(tseries)
+library(zoo)
+library(tseries)
+library(vars)
+library(forecast)
+library(aod)
+library(lubridate)
+```
+
+```{r}
+#Data Preparation
+loan <- read.csv("loan_combined.csv", head = TRUE)
+```
+
+```{r}
+#Exploratory Data Analysis for group under 30
+under30_loans <- subset(loan, select = c("year", "under30"))
+under30_loans$year <- ts(under30_loans$year)
+
+#Time Series Plot
+ts.plot(under30_loans$under30)
+#ACF Plot
+acf(under30_loans$under30, lag.max = 100)
+```
+
+```{r}
+#Exploratory Data Analysis for group between ages of 30 and 39.
+bet30_39loans <- subset(loan, select = c("year", "X30_39"))
+bet30_39loans$year <- ts(bet30_39loans$year)
+
+#Time Series Plot
+ts.plot(bet30_39loans$X30_39)
+#ACF Plot
+acf(bet30_39loans$X30_39, lag.max = 100)
+```
+
+```{r}
+#Exploratory Data Analysis for group between ages of 40 and 60.
+bet40_60loans <- subset(loan, select = c("year", "X40_49"))
+bet40_60loans$year <- ts(bet40_60loans$year)
+
+#Time Series Plot
+ts.plot(bet40_60loans$X40_49)
+#ACF Plot
+acf(bet40_60loans$X40_49, lag.max = 100)
+```
+
+```{r}
+#Exploratory Data Analysis for group above 60.
+above60_loans <- subset(loan, select = c("year", "X60."))
+above60_loans$year <- ts(above60_loans$year)
+
+#Time Series Plot
+ts.plot(above60_loans$X60.)
+#ACF Plot
+acf(above60_loans$X60., lag.max = 100)
+```
+
+```{r}
+#Exploratory Data Analysis for Total.
+total.loan <- subset(loan, select = c("year", "total"))
+total.loan$year <- ts(total.loan$year)
+
+#Time Series Plot
+par(mfrow=c(2,2))
+ts.plot(total.loan$total)
+#ACF Plot
+acf(total.loan$total, lag.max = 100)
+```
+
+```{r}
+#All Data Set
+par(mfrow=c(2,3))
+ts.plot(under30_loans$under30)
+acf(under30_loans$under30, lag.max = 100)
+ts.plot(bet30_39loans$X30_39)
+acf(bet30_39loans$X30_39, lag.max = 100)
+ts.plot(bet40_60loans$X40_49)
+acf(bet40_60loans$X40_49, lag.max = 100)
+ts.plot(above60_loans$X60.)
+acf(above60_loans$X60., lag.max = 100)
+ts.plot(total.loan$total)
+acf(total.loan$total, lag.max = 100)
+```
+
+
+
+```{r}
+#Analysis: Based on the exploratory data analysis, the time series plot for the yearly data of student loan debt for all age groups show an increasing trend from 1960 to 2020 (maybe 2015?). For ACF plot, after 10 lags, it got cut off and the remaining auto-correlations remain within the confidence interval. In other words, ACF plot suggests that, for the lags beyond 10, the autocorrelation values are not significantly different from zero. In other words, they are not statistically significant and are considered as random fluctuations.
+```
+
+```{r}
+#Trend estimation for total loan using spline regression
+time.pts.total <- c(1:length(index(loan$total)))
+time.pts.total <- c(time.pts.total - min(time.pts.total))/max(time.pts.total)
+log.total <- log(loan$total)
+gam.fit.total <- gam(log.total~s(time.pts.total))
+summary(gam.fit.total)
+fit.gam.fit.total <- fitted(gam.fit.total)
+summary(fit.gam.fit.total)
+```
+
+```{r}
+#Fitted Values
+plot(loan$year, log.total, type='l', lwd=2, ylab="Log of Totan Loan Amount")
+grid(lty=1, col=gray(.8))
+lines(loan$year, log.total)
+lines(loan$year, fit.gam.fit.total,lwd=2, col="red")
+```
+
+
+
+```{r}
+#Residual Process: Trend Removal
+resid.process.gam.fit.total <- log.total-fit.gam.fit.total
+
+#Residual Plots of Residuals for Weekly Data
+plot(resid.process.gam.fit.total, ylab = "Residuals", main = "Residual Plot for Spline Regression")
+abline(h=0)
+hist(resid.process.gam.fit.total, xlab = "Residuals", main = "Histogram: Residuals for Spline Daily")
+qqnorm(resid.process.gam.fit.total, main = "QQ Plot for Spline Daily")
+qqline(resid.process.gam.fit.total)
+
+#ACF and PACF Plots of Residual Process
+par(mfrow=c(2,3))
+acf(resid.process.gam.fit.total, main = "ACF Trend Daily", lag.max = 100)
+pacf(resid.process.gam.fit.total, main = "PACF Trend Daily", lag.max = 100)
+```
+
+```{r}
+#Coefficients of fitted models
+coef.fit.gam.fit.total <- coef(gam.fit.total)
+table(coef.fit.gam.fit.total)
+
+#Checking for Causality
+causal.arma.gam.fit.weekly<- polyroot(c(1, -coef.fit.gam.fit.total))
+all(abs(causal.arma.gam.fit.weekly) > 1)
+```
+
+```{r}
+#VAR Modelling
+#Fit the loan data using VAR model with weekly seasonality and intercept.
+data.loan <- ts(loan$total, frequency = 12)
+selected_order <- VARselect(data.loan, lag.max = 10, season = 12, type="both")$selection
+print(selected_order)
+
+#HQ here is 5. So therefore p is 5.
+#Unrestricted
+model.var.loan.unrestricted <- VAR(total.loan, p=5,season = 12,type="both")
+
+#Restricted
+model.var.loan.restricted <- restrict(model.var.loan.unrestricted)
+
+#Conditional Variance Assumption test
+arch.test(model.var.loan.unrestricted)
+
+##Normality test
+normality.test(model.var.loan.unrestricted)
+```
+
+```{r}
+#Plotting
+## Plot the residual process.
+plot(resid(model.var.loan.unrestricted), ylab='Residuals',main="Residual Plot")
+abline(h=0)
+
+#QQplot
+qqnorm(resid(model.var.loan.unrestricted),ylab="Sample Q",xlab="Theoretical Q")
+qqline(resid(model.var.loan.unrestricted))
+
+#Histogram
+hist(resid(model.var.loan.unrestricted))
+
+#ACF Plot for serial correlation
+acf(resid(model.var.loan.unrestricted),main="ACF: Residuals")
+```
+
+
+
+
+

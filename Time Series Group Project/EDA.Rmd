@@ -1,0 +1,74 @@
+
+```{r}
+library(readxl)
+library(zoo)
+library(lubridate)
+library(mgcv)
+library(TSA)
+library(dynlm)
+library(tseries)
+library(car)
+```
+
+```{r}
+data = read_excel("college_cost_data.xlsx", sheet="DataFrame")
+```
+
+```{r}
+inst = "All"      # institution options:    All, Public, Private, Private/Non-Profit, Private/For-Profit
+adj = "constant"  # adjustment options:     constant (inflation adjusted), current (at-time cost)
+type = "total"    # type of cost options:   total, tuition+fees, room, board
+len = "all"       # program length options: all, 4yr, 2yr
+args = c(inst, adj, type, len)
+```
+
+```{r}
+data$Year = substr(data$Year, 1, 4)
+```
+
+```{r}
+get_ts = function(args) {
+  col = paste(args, collapse=", ")
+  return(ts(data[,col], start=1968))
+}
+```
+
+```{r}
+cost = get_ts(args)
+```
+
+```{r}
+ts.plot(cost)
+acf(cost)
+pacf(cost)
+```
+
+```{r}
+# Differenced Data
+diff_cost = diff(cost)
+ts.plot(diff_cost, ylab="First-Order Difference")
+acf(diff_cost)
+```
+
+```{r}
+# Trend Fitting
+time.pts = c(1:length(cost))
+time.pts = c(time.pts - min(time.pts))/max(time.pts)
+
+spl = gam(cost~s(time.pts))
+fit = ts(fitted(spl), start=1968)
+resi = cost - fit
+
+ts.plot(resi, ylab="Residuals")
+acf(resi, lag.max=50)
+
+ts.plot(cost)
+lines(fit, col="red")
+legend(x = "bottomright", legend = c("Time Series", "Splines Fit"), fill=c("black", "red"))
+```
+
+```{r}
+adf.test(cost)
+adf.test(resi)
+```
+
